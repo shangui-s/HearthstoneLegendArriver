@@ -120,17 +120,39 @@ class RegionPreviewTests(unittest.TestCase):
         self.assertEqual(4, len(result["regions"]))
         self.assertTrue(all(r["in_bounds"] for r in result["regions"]))
 
-    def test_wrong_resolution_is_reported_as_a_failure(self):
-        result = self.preview(grabber=make_grabber(size=(1280, 720)),
-                              screen_metrics=lambda: (1280, 720, 144))
+    def test_wrong_resolution_is_only_a_warning(self):
+        # 分辨率是「推荐项」：不一致只给 ⚠️，且 required=False，不参与 ok 判定。
+        result = self.preview(grabber=make_grabber(size=(1600, 900)),
+                              screen_metrics=lambda: (1600, 900, 96))
 
-        statuses = {check["key"]: check["status"] for check in result["checks"]}
-        self.assertEqual("fail", statuses["resolution"])
-        self.assertEqual("fail", statuses["dpi"])
-        self.assertFalse(result["ok"])
         resolution = next(c for c in result["checks"]
                           if c["key"] == "resolution")
+        self.assertEqual("warn", resolution["status"])
+        self.assertFalse(resolution["required"])
         self.assertIn("1920×1080", resolution["hint"])
+        self.assertTrue(result["ok"])   # 分辨率不对不再让预览判失败
+
+    def test_wrong_dpi_is_only_a_warning(self):
+        # 缩放也是「推荐项」：不一致只给 ⚠️，且 required=False，不参与 ok 判定。
+        result = self.preview(screen_metrics=lambda: (1920, 1080, 144))
+
+        dpi = next(c for c in result["checks"] if c["key"] == "dpi")
+        self.assertEqual("warn", dpi["status"])
+        self.assertFalse(dpi["required"])
+        self.assertIn("100%", dpi["hint"])
+        self.assertTrue(result["ok"])
+
+    def test_resolution_and_scaling_mismatch_together_still_pass(self):
+        # 分辨率 + 缩放同时不对，也只是一堆 ⚠️：不再拦运行。
+        result = self.preview(grabber=make_grabber(size=(1600, 900)),
+                              screen_metrics=lambda: (1600, 900, 144))
+
+        statuses = {check["key"]: check["status"] for check in result["checks"]}
+        self.assertEqual("warn", statuses["resolution"])
+        self.assertEqual("warn", statuses["dpi"])
+        self.assertEqual([], [c for c in result["checks"]
+                              if c["status"] == "fail"])
+        self.assertTrue(result["ok"])
 
     def test_region_outside_the_screen_is_flagged(self):
         result = self.preview(config=make_config(

@@ -282,22 +282,29 @@ def build_region_preview(config=None, grabber: Optional[Callable] = None,
     # --- 分辨率 / 缩放
     if (actual_width, actual_height) == (expected_width, expected_height):
         checks.append(_check("resolution", "屏幕分辨率", STATUS_OK,
-                             f"{actual_width}×{actual_height}"))
+                             f"{actual_width}×{actual_height}", required=False))
     else:
+        # 非必须项：只提示「可能偏移」，不参与 ok 判定（required=False）。
         checks.append(_check(
-            "resolution", "屏幕分辨率", STATUS_FAIL,
-            f"{actual_width}×{actual_height}（要求 {expected_width}×{expected_height}）",
-            "脚本的点击坐标按 1920×1080 硬编码：请把 Windows 分辨率设为 "
-            f"{expected_width}×{expected_height}，炉石用全屏模式（别用最大化窗口）。"))
+            "resolution", "屏幕分辨率", STATUS_WARN,
+            f"{actual_width}×{actual_height}（脚本按 "
+            f"{expected_width}×{expected_height} 校准）",
+            "分辨率与脚本校准值不同，点击/截图坐标可能整体偏移；能正常出牌就不用管，"
+            f"偏得厉害时把 Windows 分辨率设为 {expected_width}×{expected_height}，"
+            "炉石用全屏模式（别用最大化窗口）。", required=False))
     if dpi:
         if dpi == expected_dpi:
             checks.append(_check("dpi", "显示缩放（DPI）", STATUS_OK,
-                                 f"{dpi}（{round(dpi / 96 * 100)}%）"))
+                                 f"{dpi}（{round(dpi / 96 * 100)}%）",
+                                 required=False))
         else:
+            # 非必须项：只提示「可能偏移」，不参与 ok 判定（required=False）。
             checks.append(_check(
-                "dpi", "显示缩放（DPI）", STATUS_FAIL,
-                f"{dpi}（{round(dpi / 96 * 100)}%，要求 100%）",
-                "显示设置 → 缩放改成 100%：不是 100% 时截图和点击会整体偏移。"))
+                "dpi", "显示缩放（DPI）", STATUS_WARN,
+                f"{dpi}（{round(dpi / 96 * 100)}%，脚本按 "
+                f"{round(expected_dpi / 96 * 100)}% 校准）",
+                "缩放与脚本校准值不同，截图/点击可能整体偏移；能正常出牌就不用管，"
+                "偏得厉害时把「显示设置 → 缩放」改成 100%。", required=False))
 
     # --- 逐个区域：是否在屏幕内 + 画框
     regions = draw_region_boxes(image, config, scale=scale)

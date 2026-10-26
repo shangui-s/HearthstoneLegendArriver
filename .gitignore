@@ -27,3 +27,7 @@ image.png
 !cards.json
 
 reasonix.toml
+
+# 本地改动备份 / 工作区记忆：只留在本机，不进仓库
+backup/
+.workbuddy/

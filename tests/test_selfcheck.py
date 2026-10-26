@@ -4,6 +4,8 @@
 import json
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 import selfcheck
 
@@ -214,6 +216,73 @@ class RunChecksTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(1, result["warned"])
         self.assertIn("提示", result["summary"])
+
+
+class ResolutionRequirementTests(unittest.TestCase):
+    """分辨率与显示缩放都是「推荐项」：不一致只给 ⚠️，不拦运行。"""
+
+    CONFIG = SimpleNamespace(desktop_size=(1920, 1080), desktop_dpi=96)
+
+    def _environment_items(self, size, dpi=96):
+        def ok_item(key, label, required):
+            return selfcheck._item(key, label, selfcheck.STATUS_OK, "", "",
+                                   required)
+
+        with mock.patch.object(selfcheck, "_is_admin", lambda: True), \
+                mock.patch.object(selfcheck, "_current_screen_size",
+                                  lambda: size), \
+                mock.patch.object(selfcheck, "_current_dpi", lambda: dpi), \
+                mock.patch.object(selfcheck, "_hearthstone_item",
+                                  lambda: ok_item("hearthstone", "炉石窗口", False)), \
+                mock.patch.object(selfcheck, "_log_dir_item",
+                                  lambda: ok_item("log-root", "炉石日志目录", True)), \
+                mock.patch.object(selfcheck, "_ocr_model_item",
+                                  lambda: ok_item("ocr-model", "OCR 模型目录", False)):
+            items = selfcheck.environment_items(self.CONFIG)
+        return {item["key"]: item for item in items}
+
+    def test_matching_resolution_is_ok_and_not_required(self):
+        item = self._environment_items((1920, 1080))["resolution"]
+
+        self.assertEqual(selfcheck.STATUS_OK, item["status"])
+        self.assertFalse(item["required"])
+
+    def test_mismatched_resolution_only_warns(self):
+        item = self._environment_items((2560, 1440))["resolution"]
+
+        self.assertEqual(selfcheck.STATUS_WARN, item["status"])
+        self.assertFalse(item["required"])
+        self.assertIn("2560×1440", item["detail"])
+        self.assertIn("1920×1080", item["hint"])
+
+    def test_mismatched_scaling_only_warns(self):
+        item = self._environment_items((1920, 1080), dpi=144)["dpi"]
+
+        self.assertEqual(selfcheck.STATUS_WARN, item["status"])
+        self.assertFalse(item["required"])
+        self.assertIn("150%", item["detail"])
+        self.assertIn("100%", item["hint"])
+
+    def test_matching_scaling_is_ok_and_not_required(self):
+        item = self._environment_items((1920, 1080), dpi=96)["dpi"]
+
+        self.assertEqual(selfcheck.STATUS_OK, item["status"])
+        self.assertFalse(item["required"])
+
+    def test_resolution_and_scaling_mismatch_do_not_block_the_run(self):
+        env = [selfcheck._item("resolution", "屏幕分辨率", selfcheck.STATUS_WARN,
+                               "2560×1440（脚本按 1920×1080 校准）", "提示", False),
+               selfcheck._item("dpi", "显示缩放（DPI）", selfcheck.STATUS_WARN,
+                               "120（125%，脚本按 100% 校准）", "提示", False)]
+
+        result = selfcheck.run_checks(
+            version=(3, 12, 14), bits=64, importer=lambda name: object(),
+            version_reader=lambda dists: "1.0", pins={},
+            environment_probe=lambda: env)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(0, result["failed"])
+        self.assertEqual(2, result["warned"])
 
 
 class RealEnvironmentTests(unittest.TestCase):
