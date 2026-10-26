@@ -36,7 +36,32 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 依赖较大（含 PaddleOCR / PaddlePaddle），耐心等待。
 
-### 3. 启动
+### 3. 启动（一键启动 / 手动启动）
+
+**方式一（推荐）：双击 `start.bat`**
+
+直接双击项目根目录里的 **`start.bat`**，之后全自动：
+
+1. 自动请求管理员权限（UAC 弹窗点「是」）——鼠标/键盘点击必须管理员才生效；
+2. 自动找 **Python 3.12（64 位）**：`HS_PYTHON` 环境变量 → `py -3.12` → PATH → 常见安装路径 → conda 的 `HTL` 环境；
+3. 检查依赖，缺了会问你要不要用清华镜像一键 `pip install -r requirements.txt`；
+4. 启动 `web_ui.py`，浏览器自动打开控制台。
+
+浏览器地址是 `http://127.0.0.1:8765`（端口被占用会自动顺延，以控制台打印为准）。关掉黑窗口 = 退出控制台。
+
+`start.bat` 可加参数（在命令行里 `start.bat -CheckOnly`，或右键 → 发送到桌面快捷方式后改参数）：
+
+| 参数 | 作用 |
+| --- | --- |
+| `-CheckOnly` | 只体检（找 Python + 查依赖），不启动 |
+| `-NoElevate` | 不请求管理员权限，用当前权限直接启动 |
+| `-NoBrowser` | 启动时不自动打开浏览器 |
+
+> `start.ps1` 是实际逻辑，`start.bat` 只是双击入口，两个文件要放在项目根目录（和 `web_ui.py` 同一层）。
+> 如果双击后被安全软件/执行策略拦住，见下面「方式二」的命令行启动。
+
+**方式二：命令行启动**
+
 - **以管理员身份**运行：
   win键搜索powershell，右键管理员身份运行，复制项目根目录的**绝对路径**（如果不会请找AI帮忙），输入以下命令
 ```text
