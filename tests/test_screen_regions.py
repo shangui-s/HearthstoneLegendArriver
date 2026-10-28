@@ -67,6 +67,24 @@ class RegionRegistryTests(unittest.TestCase):
         self.assertEqual(FSM_action._AI_WIN_RATE_REGIONS[1],
                          screen_regions.AI_WIN_RATE_WIDE_REGION)
 
+    def test_win_rate_region_reaches_the_left_edge(self):
+        """回归：浮动条贴左上角，区域左边界必须靠到边缘。
+
+        旧值从 x=110 起，会把「AI胜率」四个字裁掉，只剩右侧一截数字读不到。
+        """
+        left, top, right, bottom = screen_regions.AI_WIN_RATE_REGION
+
+        self.assertLessEqual(left, 20)
+        self.assertLessEqual(top, 8)
+        self.assertGreaterEqual(right, 250)
+        self.assertGreaterEqual(bottom, 48)
+        # 兜底区域必须完整包住主区域
+        wl, wt, wr, wb = screen_regions.AI_WIN_RATE_WIDE_REGION
+        self.assertLessEqual(wl, left)
+        self.assertLessEqual(wt, top)
+        self.assertGreaterEqual(wr, right)
+        self.assertGreaterEqual(wb, bottom)
+
     def test_state_probe_points_are_reported(self):
         points = screen_regions.state_probe_points()
 

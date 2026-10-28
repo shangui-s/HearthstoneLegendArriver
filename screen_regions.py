@@ -28,8 +28,9 @@ import screen_scale
 
 # 盒子浮动条「AI胜率 X%」的截图区域，必须与 FSM_action._AI_WIN_RATE_REGIONS
 # 一致（test_screen_regions.py 会导入 FSM_action 校验，防止两边改岔）。
-AI_WIN_RATE_REGION = (110, 8, 270, 48)
-AI_WIN_RATE_WIDE_REGION = (95, 0, 300, 60)
+# 浮动条贴屏幕左上角，左边缘要留到 x≈10，否则会把“AI胜率”四个字裁掉。
+AI_WIN_RATE_REGION = (10, 2, 270, 52)
+AI_WIN_RATE_WIDE_REGION = (0, 0, 300, 64)
 
 # get_screen.get_state() 直接读这几个像素来判断当前阶段（屏幕坐标 x, y）。
 # 它们不是区域而是单点，所以画成十字准星：位置偏了状态识别就会错。
