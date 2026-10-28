@@ -1,5 +1,7 @@
 """Validate recommendation evidence immediately before execution."""
 
+import screen_scale
+
 from src.recommendation_config import RecommendationConfig
 from src.recommendation_models import ValidationResult
 
@@ -47,10 +49,15 @@ class RecommendationValidator:
             return ValidationResult.reject("current_ocr_frame")
         if current_ocr.normalized_text != proposed.normalized_instruction:
             return ValidationResult.reject("recommendation_changed")
-        if current_frame.desktop_size != self.config.desktop_size:
+        # 帧尺寸只校验"是基准帧(1920×1080)或当前物理屏"：分辨率与缩放已由
+        # screen_scale 统一换算，高 DPI / 2K 屏不再被当成异常拒绝。
+        try:
+            allowed_sizes = {tuple(self.config.desktop_size),
+                             tuple(screen_scale.screen_size())}
+        except Exception:
+            allowed_sizes = {tuple(self.config.desktop_size)}
+        if tuple(current_frame.desktop_size) not in allowed_sizes:
             return ValidationResult.reject("desktop_size")
-        if current_frame.dpi != self.config.desktop_dpi:
-            return ValidationResult.reject("dpi")
         if not current_frame.window_handle or not current_frame.foreground:
             return ValidationResult.reject("window")
         if not current_frame.panel_visible:

@@ -9,6 +9,7 @@ import keyboard
 
 import click
 import get_screen
+import screen_scale
 from config import (
     DEFAULT_AUTO_CONCEDE, SNAPSHOT_WRITE_INTERVAL, human_like_settings,
 )
@@ -802,7 +803,8 @@ def confirm_button_present() -> bool:
     except Exception:
         return False
     try:
-        left, top, right, bottom = recommendation_config.mulligan_confirm_roi
+        left, top, right, bottom = screen_scale.to_screen_box(
+            recommendation_config.mulligan_confirm_roi)
         rgb = np.asarray(ImageGrab.grab(
             bbox=(left, top, right, bottom), all_screens=False))
         img = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -877,7 +879,8 @@ def read_ai_win_rate():
         return None
     for index, box in enumerate(_AI_WIN_RATE_REGIONS):
         try:
-            rgb = np.asarray(ImageGrab.grab(bbox=box, all_screens=False))
+            rgb = np.asarray(ImageGrab.grab(
+                bbox=screen_scale.to_screen_box(box), all_screens=False))
             img = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             img = cv2.resize(img, None, fx=_AI_WIN_RATE_SCALE,
                              fy=_AI_WIN_RATE_SCALE,

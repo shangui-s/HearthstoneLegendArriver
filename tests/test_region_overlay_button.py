@@ -163,7 +163,8 @@ class PaintLayerTests(unittest.TestCase):
             recommendation_roi=(10, 40, 110, 240),
             mulligan_confirm_roi=(200, 300, 300, 360))
 
-        layer = region_overlay.paint_layer(500, 400, None, config)
+        # 叠加层按物理屏尺寸绘制（基准分辨率下 1:1）
+        layer = region_overlay.paint_layer(1920, 1080, None, config)
 
         # 绿框（recommendation）的左边框应当是不透明的绿色像素
         pixel = layer.getpixel((10, 140))

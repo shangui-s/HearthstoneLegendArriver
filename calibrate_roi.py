@@ -39,14 +39,11 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageGrab
 
 # ---------------------------------------------------------------- DPI
-# 与程序截图坐标一致：物理像素坐标（进程声明 DPI aware，1.0x 缩放直接吻合）。
-try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
-except Exception:
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
+# 与主程序统一走 screen_scale：声明 DPI 感知后拿到的是物理像素，
+# 而 ui_config.json 里存的 ROI 一律是 1920×1080 基准坐标（主程序运行时按比例换算），
+# 所以下面读写配置时要 to_ref_box / to_screen_box 互转。
+import screen_scale
+screen_scale.enable_dpi_awareness()
 
 # ---------------------------------------------------------------- Win32
 USER32 = ctypes.windll.user32
@@ -198,7 +195,10 @@ def _user_config_path() -> Path:
 
 
 def _current_roi() -> list[int]:
-    """优先读用户配置（校准结果），否则用 config 默认值。"""
+    """优先读用户配置（校准结果），否则用 config 默认值。
+
+    配置里存的是 1920×1080 基准坐标，这里换算成当前屏幕的物理像素再画框。
+    """
     try:
         from src.recommendation_config import RecommendationConfig
         default = list(RecommendationConfig().recommendation_roi)
@@ -209,10 +209,10 @@ def _current_roi() -> list[int]:
         roi = data.get("recommendation_roi")
         vals = [int(v) for v in roi]
         if len(vals) == 4 and 0 <= vals[0] < vals[2] and 0 <= vals[1] < vals[3]:
-            return vals
+            return list(screen_scale.to_screen_box(vals, clamp=False))
     except Exception:
         pass
-    return default
+    return list(screen_scale.to_screen_box(default, clamp=False))
 
 
 def _grab_crop(l: int, t: int, r: int, b: int) -> np.ndarray | None:
@@ -333,7 +333,9 @@ class Calibrator:
                 cfg = {}
         except Exception:
             cfg = {}
-        cfg["recommendation_roi"] = [int(v) for v in self.roi]
+        # 帧内是物理像素框，写配置前换算回 1920×1080 基准坐标。
+        saved = list(screen_scale.to_ref_box(self.roi))
+        cfg["recommendation_roi"] = [int(v) for v in saved]
         try:
             path.write_text(
                 json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -345,7 +347,9 @@ class Calibrator:
             self._flash_active = True
         self._dirty = True
         print(f"[校准] 已保存推荐区域 -> {path}")
-        print(f"[校准] recommendation_roi={tuple(self.roi)}（重开对局生效，"
+        print(f"[校准] recommendation_roi(基准)={tuple(saved)}"
+              f"  物理像素={tuple(self.roi)}")
+        print(f"[校准] 换算：{screen_scale.describe()}（重开对局生效，"
               "不覆盖名字/日志目录等配置）")
 
     # ------------------------------------------------------------ OCR 线程

@@ -1,3 +1,7 @@
+# DPI 感知必须最先声明（在 pywin32 / pynput 之前），坐标与截图才是物理像素。
+import screen_scale
+screen_scale.enable_dpi_awareness()
+
 from time import sleep
 from FSM_action import system_exit, AutoHS_automata
 import keyboard

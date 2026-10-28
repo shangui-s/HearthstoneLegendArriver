@@ -366,41 +366,43 @@ def environment_items(config=None) -> list[dict]:
 
     expected_w, expected_h = _expected_desktop_size(config)
     width, height = _current_screen_size()
-    purpose = "脚本按这个分辨率校准坐标，不一致只是提示、不拦截运行"
+    purpose = "所有坐标按 1920×1080 书写，运行时按屏幕比例自动换算"
+    same_aspect = (width > 0 and height > 0
+                   and abs(width / float(height)
+                           - expected_w / float(expected_h)) < 0.01)
     if width == 0 and height == 0:
         screen = _item("resolution", "屏幕分辨率", STATUS_WARN, "读取失败", "",
                        False, purpose)
     elif (width, height) == (expected_w, expected_h):
-        screen = _item("resolution", "屏幕分辨率", STATUS_OK, f"{width}×{height}",
+        screen = _item("resolution", "屏幕分辨率", STATUS_OK,
+                       f"{width}×{height}（基准分辨率，坐标原样使用）",
                        "", False, purpose)
+    elif same_aspect:
+        # 同比例的大屏（如 2560×1440）可以纯按比例换算，视为达标。
+        factor = min(width / float(expected_w), height / float(expected_h))
+        screen = _item(
+            "resolution", "屏幕分辨率", STATUS_OK,
+            f"{width}×{height}（按基准 {expected_w}×{expected_h} 换算 ×{factor:.4f}）",
+            "", False, purpose)
     else:
-        # 非必须项：分辨率只是「推荐值」，不一致时提示可能偏移，但不拦截运行。
         screen = _item(
             "resolution", "屏幕分辨率", STATUS_WARN,
-            f"{width}×{height}（脚本按 {expected_w}×{expected_h} 校准）",
-            "分辨率与脚本校准值不同：点击/截图坐标可能整体偏移。"
-            "能正常出牌就不用管；如果出现点不中/识别不到，再把 Windows 分辨率设为 "
-            f"{expected_w}×{expected_h} 并用炉石全屏模式，或用「截图区域框」重新校准。",
+            f"{width}×{height}（和基准 {expected_w}×{expected_h} 不是同一比例）",
+            "不同比例时游戏全屏会留黑边/整体居中，框和点击可能对不准："
+            "把游戏分辨率改成 16:9（如 1920×1080 / 2560×1440）。",
             False, purpose)
 
     expected_dpi = _expected_dpi(config)
     dpi = _current_dpi()
-    purpose = "脚本按 100% 缩放校准坐标，不一致只是提示、不拦截运行"
+    purpose = "缩放已由坐标换算吸收，任意缩放都不影响点击"
     if dpi == 0:
         scaling = _item("dpi", "显示缩放（DPI）", STATUS_WARN, "读取失败", "",
                         False, purpose)
-    elif dpi == expected_dpi:
-        scaling = _item("dpi", "显示缩放（DPI）", STATUS_OK,
-                        f"{dpi}（{round(dpi / 96 * 100)}%）", "", False, purpose)
     else:
-        # 非必须项：缩放只是「推荐值」，不一致时提示截图/点击可能偏移，但不拦截运行。
-        scaling = _item(
-            "dpi", "显示缩放（DPI）", STATUS_WARN,
-            f"{dpi}（{round(dpi / 96 * 100)}%，脚本按 "
-            f"{round(expected_dpi / 96 * 100)}% 校准）",
-            "缩放与脚本校准值不同：截图和点击可能整体偏移。能正常出牌就不用管；"
-            "如果出现点不中/识别不到，把「显示设置 → 缩放」改成 100% 再试。",
-            False, purpose)
+        percent = round(dpi / 96 * 100)
+        note = "" if dpi == expected_dpi else "（主程序已声明 DPI 感知，按物理像素换算）"
+        scaling = _item("dpi", "显示缩放（DPI）", STATUS_OK,
+                        f"{dpi}（{percent}%）{note}", "", False, purpose)
 
     return [admin, screen, scaling, _hearthstone_item(),
             _log_dir_item(), _ocr_model_item()]

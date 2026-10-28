@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from selfcheck import STATUS_FAIL, STATUS_OK, STATUS_WARN
+import screen_scale
 
 # 盒子浮动条「AI胜率 X%」的截图区域，必须与 FSM_action._AI_WIN_RATE_REGIONS
 # 一致（test_screen_regions.py 会导入 FSM_action 校验，防止两边改岔）。
@@ -149,18 +150,27 @@ def _check(key: str, label: str, status: str, detail: str,
 
 
 def _expected(config) -> tuple[int, int, int]:
+    """基准帧尺寸与 DPI（区域坐标都以这个尺寸书写，运行时再按比例换算）。"""
     if config is None:
-        return (1920, 1080, 96)
-    size = getattr(config, "desktop_size", (1920, 1080))
+        return (screen_scale.REF_W, screen_scale.REF_H, 96)
+    size = getattr(config, "desktop_size", (screen_scale.REF_W, screen_scale.REF_H))
     try:
         width, height = int(size[0]), int(size[1])
     except Exception:
-        width, height = 1920, 1080
+        width, height = screen_scale.REF_W, screen_scale.REF_H
     try:
         dpi = int(getattr(config, "desktop_dpi", 96))
     except Exception:
         dpi = 96
     return width, height, dpi
+
+
+def _same_aspect(width: int, height: int) -> bool:
+    """是不是和基准帧同比例（16:9）——同比例才能纯按比例换算、没有黑边。"""
+    if width <= 0 or height <= 0:
+        return False
+    return abs(width / float(height)
+               - screen_scale.REF_W / float(screen_scale.REF_H)) < 0.01
 
 
 # ---------------------------------------------------------------- 预览图
@@ -183,13 +193,14 @@ def draw_region_boxes(image, config=None, scale: float = 1.0) -> list[dict]:
     regions = screenshot_regions(config)
     for region in regions:
         left, top, right, bottom = region["box"]
-        in_bounds = (0 <= left < right <= width and 0 <= top < bottom <= height)
+        # 区域坐标是 1920×1080 基准值，先换算到这张图上的像素再判断是否出界
+        x0, y0 = int(round(left * scale)), int(round(top * scale))
+        x1, y1 = int(round(right * scale)), int(round(bottom * scale))
+        in_bounds = (0 <= x0 < x1 <= width and 0 <= y0 < y1 <= height)
         region["in_bounds"] = in_bounds
         if not in_bounds:
             continue
         color = ImageColor.getrgb(region["color"])
-        x0, y0 = int(left * scale), int(top * scale)
-        x1, y1 = int(right * scale), int(bottom * scale)
         draw.rectangle((x0, y0, x1, y1), outline=color,
                        width=int(region.get("width", 3)))
         label = (f"{region['label']} {left},{top},{right},{bottom}"
@@ -226,11 +237,12 @@ def draw_state_probe_points(image, scale: float = 1.0) -> list[dict]:
     probes = state_probe_points()
     for probe in probes:
         px, py = probe["point"]
-        in_bounds = 0 <= px < width and 0 <= py < height
+        # 判定点同样是 1920×1080 基准坐标，先换算再判断是否在屏幕内
+        cx, cy = int(round(px * scale)), int(round(py * scale))
+        in_bounds = 0 <= cx < width and 0 <= cy < height
         probe["in_bounds"] = in_bounds
         if not in_bounds:
             continue
-        cx, cy = int(px * scale), int(py * scale)
         draw.line((cx - 9, cy, cx + 9, cy), fill=color, width=2)
         draw.line((cx, cy - 9, cx, cy + 9), fill=color, width=2)
         draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), outline=color, width=2)
@@ -265,12 +277,17 @@ def build_region_preview(config=None, grabber: Optional[Callable] = None,
     except Exception:
         pass
 
-    # 4K 屏的整屏 JPEG 太大，超宽时等比缩小后再画（框坐标同步缩放）。
-    scale = min(1.0, float(max_width) / float(actual_width or 1))
-    if scale < 1.0:
-        image = image.resize((max(1, int(actual_width * scale)),
-                              max(1, int(actual_height * scale))),
+    # 4K 屏的整屏 JPEG 太大，超宽时等比缩小后再画。
+    resize = min(1.0, float(max_width) / float(actual_width or 1))
+    if resize < 1.0:
+        image = image.resize((max(1, int(actual_width * resize)),
+                              max(1, int(actual_height * resize))),
                              Image.LANCZOS)
+
+    # 参考坐标 → 这张图上的像素：缩放比例 = 图宽 / 基准宽。
+    # 注意不是 resize 系数：2560×1440 的图缩到 1920 宽后，比例正好回到 1.0，
+    # 因为游戏 UI 本身已经按 2560/1920 放大了。
+    scale = float(image.width) / float(screen_scale.REF_W)
 
     draw = ImageDraw.Draw(image)
     try:
@@ -279,32 +296,30 @@ def build_region_preview(config=None, grabber: Optional[Callable] = None,
         pass
     checks: list[dict] = []
 
-    # --- 分辨率 / 缩放
-    if (actual_width, actual_height) == (expected_width, expected_height):
+    # --- 分辨率 / 缩放（都已按比例换算，非 16:9 才提示）
+    factor = (float(actual_width) / float(screen_scale.REF_W)
+              if actual_width else 1.0)
+    if (actual_width, actual_height) == (screen_scale.REF_W, screen_scale.REF_H):
         checks.append(_check("resolution", "屏幕分辨率", STATUS_OK,
-                             f"{actual_width}×{actual_height}", required=False))
+                             f"{actual_width}×{actual_height}（基准分辨率，坐标原样使用）",
+                             required=False))
+    elif _same_aspect(actual_width, actual_height):
+        checks.append(_check(
+            "resolution", "屏幕分辨率", STATUS_OK,
+            f"{actual_width}×{actual_height}（按基准 "
+            f"{screen_scale.REF_W}×{screen_scale.REF_H} 换算 ×{factor:.4f}）",
+            required=False))
     else:
-        # 非必须项：只提示「可能偏移」，不参与 ok 判定（required=False）。
         checks.append(_check(
             "resolution", "屏幕分辨率", STATUS_WARN,
-            f"{actual_width}×{actual_height}（脚本按 "
-            f"{expected_width}×{expected_height} 校准）",
-            "分辨率与脚本校准值不同，点击/截图坐标可能整体偏移；能正常出牌就不用管，"
-            f"偏得厉害时把 Windows 分辨率设为 {expected_width}×{expected_height}，"
-            "炉石用全屏模式（别用最大化窗口）。", required=False))
+            f"{actual_width}×{actual_height}（和基准 1920×1080 不是同一比例）",
+            "不同比例时游戏全屏会留黑边/整体居中，框和点击可能对不准："
+            "把游戏分辨率改成 16:9（如 1920×1080 / 2560×1440）。", required=False))
     if dpi:
-        if dpi == expected_dpi:
-            checks.append(_check("dpi", "显示缩放（DPI）", STATUS_OK,
-                                 f"{dpi}（{round(dpi / 96 * 100)}%）",
-                                 required=False))
-        else:
-            # 非必须项：只提示「可能偏移」，不参与 ok 判定（required=False）。
-            checks.append(_check(
-                "dpi", "显示缩放（DPI）", STATUS_WARN,
-                f"{dpi}（{round(dpi / 96 * 100)}%，脚本按 "
-                f"{round(expected_dpi / 96 * 100)}% 校准）",
-                "缩放与脚本校准值不同，截图/点击可能整体偏移；能正常出牌就不用管，"
-                "偏得厉害时把「显示设置 → 缩放」改成 100%。", required=False))
+        checks.append(_check(
+            "dpi", "显示缩放（DPI）", STATUS_OK,
+            f"{dpi}（{round(dpi / 96 * 100)}%），坐标已按 ×{factor:.4f} 换算",
+            required=False))
 
     # --- 逐个区域：是否在屏幕内 + 画框
     regions = draw_region_boxes(image, config, scale=scale)
@@ -354,7 +369,7 @@ def build_region_preview(config=None, grabber: Optional[Callable] = None,
         "image": f"data:image/jpeg;base64,{encoded}",
         "width": actual_width,
         "height": actual_height,
-        "scaled": scale < 1.0,
+        "scaled": resize < 1.0,
         "dpi": dpi,
         "screen": {"width": screen_width or actual_width,
                    "height": screen_height or actual_height, "dpi": dpi},

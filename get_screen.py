@@ -13,6 +13,7 @@ import numpy
 from print_info import *
 
 from constants.constants import *
+import screen_scale
 
 
 HEARTHSTONE_BOX_TITLE_MARKERS = (
@@ -187,6 +188,22 @@ def catch_screen(name=None, frame_grabber=None):
     return im_opencv
 
 
+def _probe_color(pixels, x, y):
+    """按 1920×1080 基准坐标取一个像素（BGR 列表）；越界返回 None。
+
+    截图是物理分辨率（2560×1440 等），基准点必须经 screen_scale 换算后
+    才能取到游戏 UI 上"同一个位置"的颜色。
+    """
+    try:
+        px, py = screen_scale.to_screen(x, y)
+        height, width = pixels.shape[:2]
+        if not (0 <= px < width and 0 <= py < height):
+            return None
+        return list(pixels[py][px][:3])
+    except Exception:
+        return None
+
+
 def get_state():
     hwnd = get_HS_hwnd()
     if hwnd == 0:
@@ -197,15 +214,15 @@ def get_state():
     # print("当前定位点------------")
     # print(im_opencv[1070][1090][:3])
     # 先y轴再z轴
-    if list(im_opencv[1070][1090][:3]) == [23, 52, 105] or \
-            list(im_opencv[305][705][:3]) == [21, 43, 95] or \
-            list(im_opencv[1070][1090][:3]) == [20, 51, 104]:   # 万圣节主界面会变
+    if _probe_color(im_opencv, 1090, 1070) == [23, 52, 105] or \
+            _probe_color(im_opencv, 705, 305) == [21, 43, 95] or \
+            _probe_color(im_opencv, 1090, 1070) == [20, 51, 104]:   # 万圣节主界面会变
         return FSM_MAIN_MENU
-    if list(im_opencv[1070][1090][:3]) == [8, 18, 24]:
+    if _probe_color(im_opencv, 1090, 1070) == [8, 18, 24]:
         return FSM_CHOOSING_HERO
-    if list(im_opencv[1070][1090][:3]) == [17, 18, 19]:
+    if _probe_color(im_opencv, 1090, 1070) == [17, 18, 19]:
         return FSM_MATCHING
-    if list(im_opencv[860][960][:3]) == [71, 71, 71]:
+    if _probe_color(im_opencv, 960, 860) == [71, 71, 71]:
         return FSM_CHOOSING_CARD
 
     return FSM_BATTLING

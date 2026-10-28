@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from unittest.mock import patch
 
 import click as hearthstone_click
+import screen_scale
 from manual_controller import ClickExecutor
 
 
@@ -31,6 +32,13 @@ class RecordingClickModule:
 
 
 class FullBoardMagneticTests(unittest.TestCase):
+    def setUp(self):
+        # 拖拽点位断言用 1920×1080 基准坐标，换算固定成恒等
+        screen_scale.set_screen_size((screen_scale.REF_W, screen_scale.REF_H))
+
+    def tearDown(self):
+        screen_scale.set_screen_size(None)
+
     def _executor(self, clicks):
         return ClickExecutor(
             click_module=clicks,

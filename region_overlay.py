@@ -30,6 +30,7 @@ from screen_regions import (
     draw_region_boxes, draw_state_probe_points, label_font, panel_visible,
     screenshot_regions,
 )
+import screen_scale
 
 # ---------------------------------------------------------------- Win32
 USER32 = ctypes.windll.user32
@@ -179,8 +180,10 @@ def paint_layer(width: int, height: int, panel_state: Optional[bool] = None,
     from PIL import Image, ImageDraw
 
     canvas = Image.new("RGBA", (max(1, width), max(1, height)), (0, 0, 0, 0))
-    draw_region_boxes(canvas, config)
-    draw_state_probe_points(canvas)
+    # 区域/判定点都是 1920×1080 基准坐标，叠加层画在物理分辨率上，按比例放大。
+    scale = float(canvas.width) / float(screen_scale.REF_W)
+    draw_region_boxes(canvas, config, scale=scale)
+    draw_state_probe_points(canvas, scale=scale)
 
     draw = ImageDraw.Draw(canvas)
     lines = hint_lines(panel_state)
@@ -275,7 +278,9 @@ class RegionBoxOverlay:
             regions = screenshot_regions(
                 self._config() if config is None else config)
             roi = next(r for r in regions if r["key"] == "recommendation")["box"]
-            crop = ImageGrab.grab(bbox=tuple(roi), all_screens=False)
+            # roi 是 1920×1080 基准坐标，截图要用物理像素
+            crop = ImageGrab.grab(bbox=screen_scale.to_screen_box(roi),
+                                  all_screens=False)
             return bool(self._detector(crop))
         except Exception:
             return None

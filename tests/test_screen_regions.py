@@ -120,39 +120,52 @@ class RegionPreviewTests(unittest.TestCase):
         self.assertEqual(4, len(result["regions"]))
         self.assertTrue(all(r["in_bounds"] for r in result["regions"]))
 
-    def test_wrong_resolution_is_only_a_warning(self):
-        # 分辨率是「推荐项」：不一致只给 ⚠️，且 required=False，不参与 ok 判定。
-        result = self.preview(grabber=make_grabber(size=(1600, 900)),
-                              screen_metrics=lambda: (1600, 900, 96))
+    def test_sixteen_by_nine_screen_is_converted_not_flagged(self):
+        # 2560×1440 这类同比例大屏不是"错误"，而是按比例换算后照常工作。
+        result = self.preview(grabber=make_grabber(size=(2560, 1440)),
+                              screen_metrics=lambda: (2560, 1440, 120))
+
+        resolution = next(c for c in result["checks"]
+                          if c["key"] == "resolution")
+        self.assertEqual("ok", resolution["status"])
+        self.assertFalse(resolution["required"])
+        self.assertIn("×1.3333", resolution["detail"])
+        self.assertTrue(result["ok"])
+
+    def test_non_sixteen_by_nine_screen_only_warns(self):
+        # 16:10 这类不同比例：画面会留黑边/居中，给 ⚠️ 但不拦运行。
+        result = self.preview(grabber=make_grabber(size=(1600, 1000)),
+                              screen_metrics=lambda: (1600, 1000, 96))
 
         resolution = next(c for c in result["checks"]
                           if c["key"] == "resolution")
         self.assertEqual("warn", resolution["status"])
         self.assertFalse(resolution["required"])
         self.assertIn("1920×1080", resolution["hint"])
-        self.assertTrue(result["ok"])   # 分辨率不对不再让预览判失败
-
-    def test_wrong_dpi_is_only_a_warning(self):
-        # 缩放也是「推荐项」：不一致只给 ⚠️，且 required=False，不参与 ok 判定。
-        result = self.preview(screen_metrics=lambda: (1920, 1080, 144))
-
-        dpi = next(c for c in result["checks"] if c["key"] == "dpi")
-        self.assertEqual("warn", dpi["status"])
-        self.assertFalse(dpi["required"])
-        self.assertIn("100%", dpi["hint"])
-        self.assertTrue(result["ok"])
-
-    def test_resolution_and_scaling_mismatch_together_still_pass(self):
-        # 分辨率 + 缩放同时不对，也只是一堆 ⚠️：不再拦运行。
-        result = self.preview(grabber=make_grabber(size=(1600, 900)),
-                              screen_metrics=lambda: (1600, 900, 144))
-
-        statuses = {check["key"]: check["status"] for check in result["checks"]}
-        self.assertEqual("warn", statuses["resolution"])
-        self.assertEqual("warn", statuses["dpi"])
         self.assertEqual([], [c for c in result["checks"]
                               if c["status"] == "fail"])
         self.assertTrue(result["ok"])
+
+    def test_non_100_scaling_is_reported_as_ok(self):
+        # 缩放不再影响点击（坐标换算吸收），125% 也应当报 OK。
+        result = self.preview(screen_metrics=lambda: (1920, 1080, 120))
+
+        dpi = next(c for c in result["checks"] if c["key"] == "dpi")
+        self.assertEqual("ok", dpi["status"])
+        self.assertFalse(dpi["required"])
+        self.assertIn("125%", dpi["detail"])
+        self.assertTrue(result["ok"])
+
+    def test_boxes_are_scaled_onto_a_2560_frame(self):
+        # 直接校验绘制层：基准坐标 (7,200,202,500) 在 2560 宽的图上应落在 ×4/3 处
+        image = Image.new("RGB", (2560, 1440), (0, 0, 0))
+
+        regions = screen_regions.draw_region_boxes(
+            image, make_config(), scale=2560 / 1920.0)
+
+        box = next(r for r in regions if r["key"] == "recommendation")["box"]
+        self.assertEqual((7, 200, 202, 500), box)      # 清单里仍是基准坐标
+        self.assertEqual((99, 199, 111), image.getpixel((9, 400)))  # 画在 7×4/3
 
     def test_region_outside_the_screen_is_flagged(self):
         result = self.preview(config=make_config(

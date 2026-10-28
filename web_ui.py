@@ -16,6 +16,11 @@
 """
 from __future__ import annotations
 
+# DPI 感知必须最先声明：否则 125% 缩放的 2560×1440 屏会被系统报成 2048×1152，
+# 之后截图尺寸、鼠标坐标、状态判定点全都差 1.25 倍（详见 screen_scale 文档）。
+import screen_scale
+screen_scale.enable_dpi_awareness()
+
 import ctypes
 try:
     import log_overlay

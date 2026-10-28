@@ -247,21 +247,32 @@ class ResolutionRequirementTests(unittest.TestCase):
         self.assertEqual(selfcheck.STATUS_OK, item["status"])
         self.assertFalse(item["required"])
 
-    def test_mismatched_resolution_only_warns(self):
+    def test_sixteen_by_nine_screen_is_converted_to_ok(self):
+        # 2560×1440 与基准同比例：按比例换算后视为达标，不再是提示项。
         item = self._environment_items((2560, 1440))["resolution"]
 
-        self.assertEqual(selfcheck.STATUS_WARN, item["status"])
+        self.assertEqual(selfcheck.STATUS_OK, item["status"])
         self.assertFalse(item["required"])
         self.assertIn("2560×1440", item["detail"])
-        self.assertIn("1920×1080", item["hint"])
+        self.assertIn("1.3333", item["detail"])
 
-    def test_mismatched_scaling_only_warns(self):
-        item = self._environment_items((1920, 1080), dpi=144)["dpi"]
+    def test_non_sixteen_by_nine_screen_only_warns(self):
+        # 16:10 这类不同比例：游戏会留黑边，只提示不拦运行。
+        item = self._environment_items((2560, 1600))["resolution"]
 
         self.assertEqual(selfcheck.STATUS_WARN, item["status"])
         self.assertFalse(item["required"])
-        self.assertIn("150%", item["detail"])
-        self.assertIn("100%", item["hint"])
+        self.assertIn("2560×1600", item["detail"])
+        self.assertIn("1920×1080", item["hint"])
+
+    def test_non_100_scaling_is_ok(self):
+        # 缩放由坐标换算吸收，125%/150% 都是 OK（结论里会说明已按物理像素换算）。
+        item = self._environment_items((1920, 1080), dpi=120)["dpi"]
+
+        self.assertEqual(selfcheck.STATUS_OK, item["status"])
+        self.assertFalse(item["required"])
+        self.assertIn("125%", item["detail"])
+        self.assertIn("DPI 感知", item["detail"])
 
     def test_matching_scaling_is_ok_and_not_required(self):
         item = self._environment_items((1920, 1080), dpi=96)["dpi"]

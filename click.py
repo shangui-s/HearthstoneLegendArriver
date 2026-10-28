@@ -12,6 +12,7 @@ from constants.constants import *
 from print_info import *
 from get_screen import *
 from config import human_like_settings
+import screen_scale
 
 
 #测试不同分辨率的点击效果，因为屏幕截取未支持不同分辨率，失败了
@@ -86,7 +87,7 @@ def center_mouse(mouse=None):
     """Move the pointer to the neutral reset point without clicking."""
     if mouse is None:
         mouse = Controller()
-    mouse.position = MOUSE_RESET_POS
+    mouse.position = screen_scale.to_screen(*MOUSE_RESET_POS)
 
 
 def _random_hand_hover_point(last=None):
@@ -122,7 +123,7 @@ def human_like_pause(mouse=None, settings=None):
         if remaining <= 0:
             break
         point = _random_hand_hover_point(last)
-        mouse.position = point
+        mouse.position = screen_scale.to_screen(*point)
         last = point
         hover = random.uniform(cfg["hover_min"], cfg["hover_max"])
         time.sleep(min(hover, remaining))
@@ -158,7 +159,9 @@ def run_hearthstone_action(action):
 
 
 def _send_physical_click(mouse, x, y, button):
-    mouse.position = (x, y)
+    # 传进来的 x/y 一律是 1920×1080 基准坐标，这里统一换算成物理像素
+    # （2560×1440 屏 ×1.3333；1920×1080 屏原样使用）。
+    mouse.position = screen_scale.to_screen(x, y)
     rand_sleep(0.1)
     mouse.press(button)
     rand_sleep(0.1)
@@ -318,12 +321,12 @@ def drag_card_to_board_entity(card_index, card_num, entity_index, entity_num):
     assert 0 <= entity_index < entity_num <= 7
 
     mouse = Controller()
-    mouse.position = (HAND_CARD_X[card_num][card_index], 1000)
+    mouse.position = screen_scale.to_screen(HAND_CARD_X[card_num][card_index], 1000)
     rand_sleep(0.1)
     mouse.press(Button.left)
     try:
         board_x = 960 - (entity_num - 1) * 70 + entity_index * 140
-        mouse.position = (board_x - 25, 600)
+        mouse.position = screen_scale.to_screen(board_x - 25, 600)
         rand_sleep(0.1)
     finally:
         mouse.release(Button.left)
@@ -402,7 +405,7 @@ def drag_card_to_deck():
     try:
         rand_sleep(0.1)
         # 我方牌库中心点(1920x1080 实测，用户量得 1635,640)。
-        mouse.position = (1635, 640)
+        mouse.position = screen_scale.to_screen(1635, 640)
         rand_sleep(DECK_DROP_HOLD_INTERVAL)
     finally:
         mouse.release(Button.left)

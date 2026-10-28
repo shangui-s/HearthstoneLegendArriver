@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import click as hearthstone_click
 import config
+import screen_scale
 
 
 class RecordingMouse:
@@ -114,6 +115,8 @@ class HumanLikeSettingsTests(unittest.TestCase):
 
 class HumanLikePauseTests(unittest.TestCase):
     def setUp(self):
+        # 悬停点断言用的是 1920×1080 基准坐标，这里把换算固定成恒等
+        screen_scale.set_screen_size((screen_scale.REF_W, screen_scale.REF_H))
         self.clock = FakeClock()
         self.mouse = RecordingMouse()
         self.printed = []
@@ -130,6 +133,7 @@ class HumanLikePauseTests(unittest.TestCase):
     def tearDown(self):
         for item in self._patches:
             item.stop()
+        screen_scale.set_screen_size(None)
 
     def _settings(self, lo=0.5, hi=3.0, h_lo=0.2, h_hi=1.0):
         return {"enabled": True, "post_delay_min": lo,
@@ -207,6 +211,12 @@ class ParkMouseTests(unittest.TestCase):
     否则匹配对手、选卡组、错误弹窗取消这类非推荐动作也会被拖慢，
     而活人感只应对局中识别盒子意见并执行完之后生效。
     """
+
+    def setUp(self):
+        screen_scale.set_screen_size((screen_scale.REF_W, screen_scale.REF_H))
+
+    def tearDown(self):
+        screen_scale.set_screen_size(None)
 
     def test_park_is_plain_even_when_human_like_enabled(self):
         mouse = RecordingMouse()

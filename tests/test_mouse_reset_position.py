@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import click as hearthstone_click
+import screen_scale
 
 RESET = (70, 60)
 
@@ -34,6 +35,13 @@ class RecordingMouse:
 
 
 class MouseResetPositionTests(unittest.TestCase):
+    def setUp(self):
+        # 复位点断言按基准分辨率写，这里把坐标换算固定成恒等
+        screen_scale.set_screen_size((screen_scale.REF_W, screen_scale.REF_H))
+
+    def tearDown(self):
+        screen_scale.set_screen_size(None)
+
     def test_reset_position_is_the_safe_spot(self):
         self.assertEqual(RESET, hearthstone_click.MOUSE_RESET_POS)
 

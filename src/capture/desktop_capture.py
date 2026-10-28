@@ -16,6 +16,8 @@ from PIL import ImageGrab
 from src.recommendation_config import RecommendationConfig
 from src.recommendation_models import FrameEvidence
 
+import screen_scale
+
 
 class CaptureEnvironmentError(RuntimeError):
     """The visible desktop cannot safely produce a current recommendation."""
@@ -30,8 +32,8 @@ def _default_screen_grabber() -> np.ndarray:
 def _roi_screen_grabber(bbox) -> Callable[[], np.ndarray]:
     """Grab only the recommendation panel ROI instead of the whole desktop.
 
-    Capturing the 271x938 panel directly skips transferring and converting
-    the other ~88% of a 1920x1080 frame on every capture.
+    bbox 是**物理像素**（调用方已按 screen_scale 换算）；截这一小块能省掉
+    整屏 88% 的搬运与色彩转换。
     """
     def grab() -> np.ndarray:
         rgb = np.asarray(ImageGrab.grab(bbox=bbox, all_screens=False))
@@ -82,7 +84,8 @@ class DesktopCapture:
         self.config = config
         self.screen_grabber = (screen_grabber
                                or _roi_screen_grabber(
-                                   config.recommendation_roi))
+                                   screen_scale.to_screen_box(
+                                       config.recommendation_roi)))
         self.dpi_reader = dpi_reader
         self.process_checker = process_checker
         self.window_reader = window_reader
@@ -90,7 +93,9 @@ class DesktopCapture:
 
     @property
     def _roi_size(self) -> tuple[int, int]:
-        left, top, right, bottom = self.config.recommendation_roi
+        """ROI 在**物理像素**下的 (宽, 高)——与 ROI 抓图输出一致。"""
+        left, top, right, bottom = screen_scale.to_screen_box(
+            self.config.recommendation_roi)
         return (bottom - top, right - left)
 
     def _is_roi_frame(self, width: int, height: int) -> bool:
@@ -145,18 +150,23 @@ class DesktopCapture:
         roi_frame = self._is_roi_frame(width, height)
         if validate_environment:
             if roi_frame:
-                # ROI grabber output: the desktop size is known from config.
-                desktop_width, desktop_height = self.config.desktop_size
+                # ROI 抓图：尺寸已经由 screen_scale 换算校验过，桌面尺寸按当前屏幕记。
+                desktop_width, desktop_height = screen_scale.screen_size()
             else:
                 desktop_width, desktop_height = width, height
-                if (width, height) != self.config.desktop_size:
+                # 整屏帧必须是"基准帧(1920×1080)"或"当前物理屏"之一：
+                # 两者都按 screen_scale 换算，坐标才成立；其它尺寸说明分辨率/缩放
+                # 在运行中变了，直接拒绝比点偏安全。
+                allowed = {tuple(self.config.desktop_size),
+                           tuple(screen_scale.screen_size())}
+                if (width, height) not in allowed:
                     raise CaptureEnvironmentError(
                         f"desktop_size_mismatch:{width}x{height}")
         else:
             desktop_width, desktop_height = width, height
+        # DPI 不再作为门槛：截图与点击都由 screen_scale 换算到物理像素，
+        # 125%/150% 缩放一样能用，这里只如实记录。
         effective_dpi = self.config.desktop_dpi if dpi is None else int(dpi)
-        if validate_environment and effective_dpi != self.config.desktop_dpi:
-            raise CaptureEnvironmentError(f"dpi_mismatch:{effective_dpi}")
 
         roi = (pixels[:, :, :3] if roi_frame
                else self._crop_array(pixels))
@@ -181,7 +191,9 @@ class DesktopCapture:
         return self._crop_array(frame.pixels).copy()
 
     def _crop_array(self, pixels: np.ndarray) -> np.ndarray:
-        left, top, right, bottom = self.config.recommendation_roi
+        # 配置里的 ROI 是 1920×1080 基准坐标，整屏帧可能是 2560×1440：先换算再裁。
+        left, top, right, bottom = screen_scale.to_screen_box(
+            self.config.recommendation_roi)
         height, width = pixels.shape[:2]
         if left < 0 or top < 0 or right > width or bottom > height:
             raise CaptureEnvironmentError("recommendation_roi_out_of_bounds")

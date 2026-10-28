@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import click as hearthstone_click
+import screen_scale
 
 
 class RecordingMouse:
@@ -24,6 +25,13 @@ class RecordingMouse:
 
 
 class ClickSafetyCheckRemovalTests(unittest.TestCase):
+    def setUp(self):
+        # 坐标换算固定成基准分辨率，断言里的 1920×1080 坐标才能直接比对
+        screen_scale.set_screen_size((screen_scale.REF_W, screen_scale.REF_H))
+
+    def tearDown(self):
+        screen_scale.set_screen_size(None)
+
     def test_clicks_when_hearthstone_window_is_not_found(self):
         mouse = RecordingMouse()
 
